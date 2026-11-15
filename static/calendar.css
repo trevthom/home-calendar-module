@@ -1,0 +1,1511 @@
+/* =========================================================
+   Home Calendar
+   Ported from the original Home Calendar application. The app's own design
+   tokens, layout and component rules are kept; every selector is scoped with
+   :where(.cal-app) (zero added specificity, so the original cascade order is
+   preserved) so the hub's masthead, cards and forms keep their own styling.
+   ========================================================= */
+
+/* ---------- Design tokens (variables.css) ---------- */
+
+.cal-app {
+  /* Typography */
+  --font-display: "Fraunces", "Cormorant Garamond", Georgia, serif;
+  --font-body: "Geist", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+
+  /* Spacing (8px base, but with editorial breathing room) */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 24px;
+  --sp-6: 32px;
+  --sp-7: 48px;
+
+  /* Radii — slightly softer than usual */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 14px;
+
+  /* Layout */
+  --sidebar-w: 280px;
+
+  /* Motion */
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+/* ---------- LIGHT (warm paper / ink) ---------- */
+
+.cal-app,
+.cal-app[data-theme="light"] {
+  --bg:        #f5f1e8;
+  --bg-grain:  #efeadd;
+  --surface:   #fffbf2;
+  --surface-2: #f2ecdd;
+  --text:      #1a1814;
+  --text-soft: #4d463a;
+  --muted:     #8a8275;
+  --border:    #ddd5c5;
+  --border-strong: #c9bfa9;
+  --accent:    #c84a31;
+  --accent-soft: #e9b3a4;
+  --shadow: 0 1px 2px rgba(40, 30, 15, 0.06),
+            0 8px 24px rgba(40, 30, 15, 0.08);
+  --shadow-lg: 0 4px 12px rgba(40, 30, 15, 0.10),
+               0 24px 48px rgba(40, 30, 15, 0.16);
+  --today-bg: #f5e3dc;
+}
+
+/* ---------- DARK (deep ink / cream) ---------- */
+
+.cal-app[data-theme="dark"] {
+  --bg:        #14110d;
+  --bg-grain:  #1a1610;
+  --surface:   #1e1a14;
+  --surface-2: #25201a;
+  --text:      #ece4d2;
+  --text-soft: #b6ad99;
+  --muted:     #7a7264;
+  --border:    #2e2a22;
+  --border-strong: #423d33;
+  --accent:    #e07b5e;
+  --accent-soft: #5a2a1e;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.4),
+            0 8px 24px rgba(0, 0, 0, 0.45);
+  --shadow-lg: 0 4px 12px rgba(0, 0, 0, 0.5),
+               0 24px 48px rgba(0, 0, 0, 0.6);
+  --today-bg: #2e1d18;
+}
+
+/* The 7 calendar accent colors users can pick per event */
+.cal-app {
+  --c-rust:    #c84a31;
+  --c-amber:   #c98817;
+  --c-olive:   #7e8c3c;
+  --c-teal:    #2f7a78;
+  --c-indigo:  #3e4d8c;
+  --c-plum:    #7a3d6b;
+  --c-graphite: #4a4a4a;
+}
+
+/* ---------- Reset ---------- */
+
+:where(.cal-app) *,
+:where(.cal-app) *::before,
+:where(.cal-app) *::after { box-sizing: border-box; }
+:where(.cal-app) * { margin: 0; }
+
+.cal-app {
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overflow: hidden;
+}
+
+:where(.cal-app) button { font: inherit; color: inherit; background: none; border: none; cursor: pointer; }
+:where(.cal-app) input,
+:where(.cal-app) select,
+:where(.cal-app) textarea { font: inherit; color: inherit; }
+:where(.cal-app) ul { list-style: none; padding: 0; }
+:where(.cal-app) h1,
+:where(.cal-app) h2,
+:where(.cal-app) h3,
+:where(.cal-app) h4 { font-weight: 500; }
+
+:where(.cal-app) ::selection { background: var(--accent); color: var(--surface); }
+
+/* `hidden` attribute should always win over display: flex/grid/etc. */
+:where(.cal-app) [hidden] { display: none !important; }
+
+/* ---------- App shell layout (layout.css) ----------
+ * Main fills the app surface. The sidebar is a fixed, full-height drawer that
+ * slides in from the left on both desktop and mobile (toggled by the
+ * hamburger in cal-header). A semi-transparent backdrop covers the rest of
+ * the screen while the drawer is open, click-to-close.
+ */
+
+.cal-app {
+  height: 100%;
+  overflow: hidden;
+  background:
+    radial-gradient(1200px 800px at 80% -10%, var(--bg-grain) 0%, transparent 60%),
+    var(--bg);
+  transition: background-color 280ms var(--ease);
+}
+
+:where(.cal-app) .main {
+  padding: var(--sp-6) var(--sp-7);
+  height: 100%;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+@media (max-width: 700px) {
+  :where(.cal-app) .main { padding: var(--sp-3) var(--sp-3) var(--sp-2); }
+}
+
+/* ---------- Sidebar drawer ---------- */
+
+:where(.cal-app) .sidebar {
+  position: fixed;
+  inset: 0 auto 0 0;
+  width: min(320px, 88vw);
+  z-index: 60;
+  transform: translateX(-100%);
+  transition: transform 320ms var(--ease), box-shadow 320ms var(--ease);
+  will-change: transform;
+  box-shadow: none;
+}
+:where(.cal-app) .sidebar[data-open="true"] {
+  transform: translateX(0);
+  box-shadow: var(--shadow-lg);
+}
+
+/* ---------- Drawer backdrop ---------- */
+
+:where(.cal-app) .sidebar-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: rgba(0, 0, 0, 0.42);
+  opacity: 0;
+  transition: opacity 280ms var(--ease);
+  pointer-events: none;
+}
+:where(.cal-app) .sidebar-backdrop[data-open="true"] {
+  opacity: 1;
+  pointer-events: auto;
+}
+/* When [hidden] is removed the backdrop is in the DOM but invisible until
+ * data-open flips. Override the [hidden] !important rule above. */
+:where(.cal-app) .sidebar-backdrop[hidden] { display: none !important; }
+
+/* ---------- Hamburger button ---------- */
+
+:where(.cal-app) .hamburger {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  cursor: pointer;
+  transition: background 160ms var(--ease),
+              border-color 160ms var(--ease),
+              transform 160ms var(--ease);
+  flex-shrink: 0;
+}
+:where(.cal-app) .hamburger:hover {
+  background: var(--surface-2);
+  border-color: var(--border-strong);
+}
+:where(.cal-app) .hamburger:active { transform: scale(0.96); }
+
+:where(.cal-app) .hamburger__bar {
+  display: block;
+  width: 16px;
+  height: 1.5px;
+  background: var(--text-soft);
+  border-radius: 2px;
+  transition: transform 220ms var(--ease),
+              opacity 180ms var(--ease);
+}
+
+/* Morph hamburger → X when the drawer is open. The button's
+ * aria-expanded attribute is the source of truth (set by sidebar.js). */
+:where(.cal-app) .hamburger[aria-expanded="true"] .hamburger__bar:nth-child(1) {
+  transform: translateY(5.5px) rotate(45deg);
+}
+:where(.cal-app) .hamburger[aria-expanded="true"] .hamburger__bar:nth-child(2) {
+  opacity: 0;
+}
+:where(.cal-app) .hamburger[aria-expanded="true"] .hamburger__bar:nth-child(3) {
+  transform: translateY(-5.5px) rotate(-45deg);
+}
+
+/* ---------- Sidebar content (sidebar.css) ---------- */
+
+:where(.cal-app) .sidebar {
+  border-right: 1px solid var(--border);
+  background: var(--surface);
+  padding: var(--sp-5) var(--sp-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+  overflow-y: auto;
+  transition: background-color 280ms var(--ease), border-color 280ms var(--ease);
+}
+
+/* Top button row: theme + export + import */
+:where(.cal-app) .sidebar__top {
+  display: flex;
+  gap: var(--sp-2);
+  align-items: center;
+  padding-bottom: var(--sp-4);
+  border-bottom: 1px solid var(--border);
+}
+
+:where(.cal-app) .icon-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  color: var(--text-soft);
+  transition: all 180ms var(--ease);
+  position: relative;
+}
+
+/* Theme toggle button gets larger sun/moon glyphs */
+:where(.cal-app) .icon-btn--theme { font-size: 22px; line-height: 1; }
+
+:where(.cal-app) .icon-btn:hover {
+  background: var(--surface-2);
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+:where(.cal-app) .icon-btn:active { transform: scale(0.96); }
+
+/* Theme icons swap based on data-theme */
+:where(.cal-app) .icon-sun,
+:where(.cal-app) .icon-moon {
+  position: absolute;
+  inset: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 240ms var(--ease), transform 240ms var(--ease);
+}
+:where(.cal-app)[data-theme="light"] .icon-sun { opacity: 1; transform: rotate(0); }
+:where(.cal-app)[data-theme="light"] .icon-moon { opacity: 0; transform: rotate(-90deg); }
+:where(.cal-app)[data-theme="dark"]  .icon-sun { opacity: 0; transform: rotate(90deg); }
+:where(.cal-app)[data-theme="dark"]  .icon-moon { opacity: 1; transform: rotate(0); }
+
+/* ---------- Calendar list (collapsible) ---------- */
+
+:where(.cal-app) .cal-list__header {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  border-radius: var(--radius-sm);
+  padding: var(--sp-1);
+}
+:where(.cal-app) .cal-list__header:hover { background: var(--surface-2); }
+
+:where(.cal-app) .cal-list__toggle {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-style: italic;
+  color: var(--text);
+  font-weight: 400;
+  text-align: left;
+  padding: var(--sp-1) 0;
+}
+
+:where(.cal-app) .cal-list__chev {
+  font-size: 11px;
+  color: var(--muted);
+  transition: transform 220ms var(--ease);
+  display: inline-block;
+}
+:where(.cal-app) .cal-list[data-collapsed="true"] .cal-list__chev { transform: rotate(-90deg); }
+
+:where(.cal-app) .cal-list__title { flex: 1; }
+
+:where(.cal-app) .cal-list__add {
+  width: 24px; height: 24px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 16px;
+  line-height: 1;
+  display: inline-flex; align-items: center; justify-content: center;
+  transition: all 160ms var(--ease);
+  flex-shrink: 0;
+}
+:where(.cal-app) .cal-list__add:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--surface);
+}
+
+:where(.cal-app) .cal-list__items {
+  margin-top: var(--sp-2);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow: hidden;
+  transition: max-height 280ms var(--ease), opacity 200ms var(--ease);
+  max-height: 1000px;
+  opacity: 1;
+}
+:where(.cal-app) .cal-list[data-collapsed="true"] .cal-list__items {
+  max-height: 0;
+  opacity: 0;
+  margin-top: 0;
+}
+
+:where(.cal-app) .cal-item {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-1);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  user-select: none;
+  font-size: 13px;
+}
+:where(.cal-app) .cal-item:hover { background: var(--surface-2); }
+
+:where(.cal-app) .cal-item__check {
+  width: 14px; height: 14px;
+  border-radius: 3px;
+  border: 1.5px solid var(--cal-color, var(--muted));
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: background 160ms var(--ease);
+}
+:where(.cal-app) .cal-item[data-checked="true"] .cal-item__check {
+  background: var(--cal-color, var(--accent));
+}
+:where(.cal-app) .cal-item[data-checked="true"] .cal-item__check::after {
+  content: "✓";
+  color: var(--surface);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+:where(.cal-app) .cal-item__name { flex: 1; color: var(--text-soft); }
+:where(.cal-app) .cal-item[data-checked="true"] .cal-item__name { color: var(--text); }
+
+:where(.cal-app) .cal-item__delete {
+  opacity: 0;
+  font-size: 13px;
+  color: var(--muted);
+  padding: 0 var(--sp-1);
+  transition: opacity 160ms var(--ease), color 160ms var(--ease);
+}
+:where(.cal-app) .cal-item:hover .cal-item__delete { opacity: 1; }
+:where(.cal-app) .cal-item__delete:hover { color: var(--accent); }
+
+/* ---------- Calendar header (calendar.css) ---------- */
+
+:where(.cal-app) .cal-header {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: var(--sp-3);
+  padding-bottom: var(--sp-5);
+  border-bottom: 1px solid var(--border);
+  margin-bottom: var(--sp-4);
+}
+
+/* col 1 — hamburger pinned to the left */
+:where(.cal-app) .cal-header > .hamburger { justify-self: start; }
+
+/* col 2 — month/year navigation, the visual centerpiece */
+:where(.cal-app) .cal-header__nav {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+}
+
+/* col 3 — today's date badge: a button that jumps back to the current
+ * month, boxed with slightly rounded corners */
+:where(.cal-app) .cal-header__balance {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+:where(.cal-app) .cal-header__today {
+  cursor: pointer;
+  transition: background 160ms var(--ease), border-color 160ms var(--ease),
+              transform 120ms var(--ease);
+}
+/* Hover only on devices that can really hover. On touch screens :hover
+   sticks after a tap and the badge would stay highlighted. */
+@media (hover: hover) {
+  :where(.cal-app) .cal-header__today:hover {
+    background: var(--accent-soft);
+    border-color: var(--accent);
+  }
+}
+:where(.cal-app) .cal-header__today:active { transform: scale(0.94); }
+
+:where(.cal-app) .cal-header__today {
+  font-family: var(--font-display);
+  font-variant-numeric: tabular-nums;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text);
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  align-self: center;
+  border: 1.5px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+
+:where(.cal-app) .cal-header__title {
+  font-family: var(--font-display);
+  font-weight: 300;
+  font-size: clamp(36px, 4.2vw, 60px);
+  letter-spacing: -0.02em;
+  line-height: 1;
+  display: flex;
+  gap: 0.4em;
+  align-items: baseline;
+  font-variation-settings: "SOFT" 60;
+  justify-content: center;
+  min-width: 320px;
+  text-align: center;
+}
+
+:where(.cal-app) .cal-header__month { font-style: italic; color: var(--text); }
+:where(.cal-app) .cal-header__year {
+  font-style: normal;
+  color: var(--muted);
+  font-weight: 300;
+  font-size: 0.55em;
+  letter-spacing: 0.02em;
+  font-feature-settings: "tnum";
+}
+
+:where(.cal-app) .nav-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  color: var(--muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  transition: all 160ms var(--ease);
+}
+:where(.cal-app) .nav-btn:hover {
+  color: var(--text);
+  background: var(--surface-2);
+}
+:where(.cal-app) .nav-btn--year { font-size: 13px; }
+
+/* ===== Mobile header: everything on one phone-width row =====
+ * Hamburger · ‹⟪ Month Year ⟫› · boxed today-date must all be visible
+ * without horizontal scrolling on a phone. */
+
+@media (max-width: 700px) {
+  :where(.cal-app) .cal-header {
+    grid-template-columns: auto auto 1fr;
+    gap: var(--sp-2);
+    padding-bottom: var(--sp-3);
+    margin-bottom: var(--sp-2);
+  }
+  :where(.cal-app) .cal-header > .hamburger { justify-self: end; }
+  :where(.cal-app) .hamburger { width: 30px; height: 30px; }
+
+  :where(.cal-app) .cal-header__nav { gap: var(--sp-1); }
+
+  :where(.cal-app) .cal-header__title {
+    min-width: 0;
+    font-size: clamp(24px, 6.5vw, 32px);
+    gap: 0.35em;
+  }
+  :where(.cal-app) .cal-header__month { white-space: nowrap; }
+
+  :where(.cal-app) .nav-btn { width: 26px; height: 26px; font-size: 13px; }
+  :where(.cal-app) .nav-btn--year { font-size: 11px; }
+
+  :where(.cal-app) .cal-header__today { width: 28px; height: 28px; font-size: 13px; }
+}
+
+/* Extra-tight phones (320–360px) */
+@media (max-width: 360px) {
+  :where(.cal-app) .cal-header__title { font-size: clamp(21px, 6.2vw, 26px); }
+  :where(.cal-app) .cal-header__nav { gap: 2px; }
+  :where(.cal-app) .nav-btn { width: 22px; height: 22px; font-size: 12px; }
+  :where(.cal-app) .nav-btn--year { font-size: 10px; }
+  :where(.cal-app) .hamburger { width: 28px; height: 28px; }
+  :where(.cal-app) .cal-header__today { width: 26px; height: 26px; font-size: 12px; }
+}
+
+/* ===== Day-of-week strip ===== */
+
+:where(.cal-app) .dow-row {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  border-bottom: 1px solid var(--border);
+  padding-bottom: var(--sp-2);
+  margin-bottom: var(--sp-1);
+}
+:where(.cal-app) .dow {
+  text-align: center;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: var(--muted);
+  font-weight: 500;
+}
+
+/* ===== The grid itself ===== */
+
+:where(.cal-app) .grid {
+  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  grid-auto-rows: 1fr;
+  gap: 1px;
+  background: var(--border);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  min-height: 0;
+}
+
+:where(.cal-app) .cell {
+  background: var(--surface);
+  padding: var(--sp-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  min-height: 80px;
+  cursor: pointer;
+  transition: background 140ms var(--ease);
+  position: relative;
+  overflow: hidden;
+}
+:where(.cal-app) .cell:hover { background: var(--surface-2); }
+
+:where(.cal-app) .cell--other-month { background: var(--bg-grain); }
+:where(.cal-app) .cell--other-month .cell__num { color: var(--muted); opacity: 0.6; }
+
+:where(.cal-app) .cell--today { background: var(--today-bg); }
+
+:where(.cal-app) .cell__num {
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 18px;
+  color: var(--text);
+  text-align: center;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  align-self: center;
+  line-height: 1;
+  padding: 2px 0;
+}
+
+:where(.cal-app) .cell--today .cell__num {
+  color: var(--accent);
+  font-style: italic;
+  font-weight: 500;
+}
+
+:where(.cal-app) .cell__events {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow: hidden;
+  flex: 1;
+  min-height: 0;
+}
+
+:where(.cal-app) .chip {
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  background: var(--chip-bg, var(--accent-soft));
+  color: var(--chip-color, var(--text));
+  border-left: 2px solid var(--chip-accent, var(--accent));
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  line-height: 1.4;
+  transition: transform 140ms var(--ease), filter 140ms var(--ease);
+}
+:where(.cal-app) .chip:hover { filter: brightness(1.05); transform: translateX(1px); }
+
+:where(.cal-app) .chip__time {
+  font-feature-settings: "tnum";
+  margin-right: 4px;
+  opacity: 0.75;
+}
+
+:where(.cal-app) .chip--more {
+  background: transparent;
+  color: var(--muted);
+  border-left: none;
+  padding-left: 4px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+:where(.cal-app) .chip--more:hover {
+  background: var(--surface-2);
+  color: var(--text);
+  filter: none;
+  transform: none;
+}
+
+/* Long-press on a date opens the day list: stop text selection and the
+   iOS callout from competing with it. */
+:where(.cal-app) .cell {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Right-click menu on a date cell */
+:where(.cal-app) .ctx-menu {
+  position: fixed;
+  z-index: 200;
+  min-width: 160px;
+  padding: 4px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-lg);
+}
+:where(.cal-app) .ctx-menu__item {
+  display: block;
+  width: 100%;
+  padding: 8px 12px;
+  text-align: left;
+  font-size: 13px;
+  color: var(--text);
+  border-radius: var(--radius-sm);
+}
+:where(.cal-app) .ctx-menu__item:hover,
+:where(.cal-app) .ctx-menu__item:focus-visible {
+  background: var(--surface-2);
+  outline: none;
+}
+
+/* ---------- Upcoming events panel (upcoming.css) ---------- */
+
+:where(.cal-app) .upcoming {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding-top: var(--sp-4);
+  border-top: 1px solid var(--border);
+}
+
+:where(.cal-app) .upcoming__header {
+  display: flex;
+  align-items: center;
+  border-radius: var(--radius-sm);
+  padding: var(--sp-1);
+}
+:where(.cal-app) .upcoming__header:hover { background: var(--surface-2); }
+
+:where(.cal-app) .upcoming__toggle {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-style: italic;
+  color: var(--text);
+  font-weight: 400;
+  text-align: left;
+  padding: var(--sp-1) 0;
+}
+
+:where(.cal-app) .upcoming__chev {
+  font-size: 11px;
+  color: var(--muted);
+  transition: transform 220ms var(--ease);
+  display: inline-block;
+}
+:where(.cal-app) .upcoming[data-collapsed="true"] .upcoming__chev { transform: rotate(-90deg); }
+
+:where(.cal-app) .upcoming__title { flex: 1; }
+
+:where(.cal-app) .upcoming__list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow: hidden;
+  transition: max-height 280ms var(--ease), opacity 200ms var(--ease), margin-top 220ms var(--ease);
+  max-height: 1200px;
+  opacity: 1;
+}
+:where(.cal-app) .upcoming[data-collapsed="true"] .upcoming__list {
+  max-height: 0;
+  opacity: 0;
+}
+
+:where(.cal-app) .upcoming__empty {
+  font-size: 12px;
+  color: var(--muted);
+  padding: var(--sp-3) var(--sp-1);
+  font-style: italic;
+}
+
+:where(.cal-app) .up-item {
+  display: grid;
+  grid-template-columns: 36px 1fr;
+  gap: var(--sp-3);
+  align-items: center;
+  padding: var(--sp-2) var(--sp-2);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  border-left: 2px solid var(--up-color, var(--accent));
+  transition: background 160ms var(--ease);
+}
+:where(.cal-app) .up-item:hover { background: var(--surface-2); }
+
+:where(.cal-app) .up-item__date {
+  text-align: center;
+  font-feature-settings: "tnum";
+}
+:where(.cal-app) .up-item__day {
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 400;
+  line-height: 1;
+  color: var(--text);
+}
+:where(.cal-app) .up-item__mon {
+  font-size: 9px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+:where(.cal-app) .up-item__body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+:where(.cal-app) .up-item__title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+:where(.cal-app) .up-item__meta {
+  font-size: 11px;
+  color: var(--muted);
+  font-feature-settings: "tnum";
+}
+
+/* ---------- Countdown panel (countdown.css) ---------- */
+
+:where(.cal-app) .countdown {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding-top: var(--sp-4);
+  border-top: 1px solid var(--border);
+}
+
+:where(.cal-app) .countdown__header {
+  display: flex;
+  align-items: center;
+  border-radius: var(--radius-sm);
+  padding: var(--sp-1);
+}
+:where(.cal-app) .countdown__header:hover { background: var(--surface-2); }
+
+:where(.cal-app) .countdown__toggle {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-style: italic;
+  color: var(--text);
+  font-weight: 400;
+  text-align: left;
+  padding: var(--sp-1) 0;
+}
+
+:where(.cal-app) .countdown__chev {
+  font-size: 11px;
+  color: var(--muted);
+  transition: transform 220ms var(--ease);
+  display: inline-block;
+}
+:where(.cal-app) .countdown[data-collapsed="true"] .countdown__chev { transform: rotate(-90deg); }
+
+:where(.cal-app) .countdown__title { flex: 1; }
+
+:where(.cal-app) .countdown__list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow: hidden;
+  transition: max-height 280ms var(--ease), opacity 200ms var(--ease);
+  max-height: 1200px;
+  opacity: 1;
+}
+:where(.cal-app) .countdown[data-collapsed="true"] .countdown__list {
+  max-height: 0;
+  opacity: 0;
+}
+
+:where(.cal-app) .countdown__empty {
+  font-size: 12px;
+  color: var(--muted);
+  padding: var(--sp-3) var(--sp-1);
+  font-style: italic;
+}
+
+:where(.cal-app) .cd-item {
+  display: grid;
+  grid-template-columns: 44px 1fr;
+  gap: var(--sp-3);
+  align-items: center;
+  padding: var(--sp-2) var(--sp-2);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  border-left: 2px solid var(--cd-color, var(--accent));
+  transition: background 160ms var(--ease);
+}
+:where(.cal-app) .cd-item:hover { background: var(--surface-2); }
+
+:where(.cal-app) .cd-item__count {
+  text-align: center;
+  font-feature-settings: "tnum";
+  line-height: 1;
+}
+:where(.cal-app) .cd-item__num {
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 500;
+  color: var(--cd-color, var(--accent));
+  line-height: 1;
+}
+:where(.cal-app) .cd-item__unit {
+  font-size: 9px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-top: 3px;
+}
+
+:where(.cal-app) .cd-item__body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+:where(.cal-app) .cd-item__title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+:where(.cal-app) .cd-item__when {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+/* ===== "All" button in countdown header ===== */
+
+:where(.cal-app) .countdown__show-all {
+  font-family: var(--font-body);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  cursor: pointer;
+  transition: background 160ms var(--ease), border-color 160ms var(--ease);
+}
+:where(.cal-app) .countdown__show-all:hover {
+  background: var(--surface-2);
+  border-color: var(--accent);
+}
+
+/* ===== Countdown "Show All" modal ===== */
+
+:where(.cal-app) .cd-modal__panel {
+  width: min(560px, 100%);
+}
+:where(.cal-app) .cd-modal__title {
+  font-family: var(--font-display);
+  font-weight: 300;
+  font-style: italic;
+  font-size: 28px;
+  color: var(--text);
+  margin-bottom: var(--sp-4);
+  font-variation-settings: "SOFT" 60;
+}
+:where(.cal-app) .cd-modal__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  max-height: 60vh;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+:where(.cal-app) .cd-modal__item {
+  display: grid;
+  grid-template-columns: 50px 1fr auto;
+  gap: var(--sp-3);
+  align-items: center;
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--radius-sm);
+  border-left: 2px solid var(--cd-color, var(--accent));
+  background: var(--bg-grain);
+}
+:where(.cal-app) .cd-modal__count {
+  text-align: center;
+  line-height: 1;
+}
+:where(.cal-app) .cd-modal__num {
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 500;
+  color: var(--cd-color, var(--accent));
+  line-height: 1;
+}
+:where(.cal-app) .cd-modal__unit {
+  font-size: 9px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-top: 2px;
+}
+:where(.cal-app) .cd-modal__body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+:where(.cal-app) .cd-modal__item-title {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+:where(.cal-app) .cd-modal__item-when {
+  font-size: 12px;
+  color: var(--muted);
+}
+:where(.cal-app) .cd-modal__edit {
+  font-size: 12px;
+  color: var(--accent);
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  cursor: pointer;
+  transition: background 160ms var(--ease), border-color 160ms var(--ease);
+  white-space: nowrap;
+}
+:where(.cal-app) .cd-modal__edit:hover {
+  background: var(--surface-2);
+  border-color: var(--accent);
+}
+:where(.cal-app) .cd-modal__empty {
+  font-size: 13px;
+  color: var(--muted);
+  font-style: italic;
+  padding: var(--sp-3) 0;
+}
+
+/* ---------- Modal (modal.css) ---------- */
+
+:where(.cal-app) .modal {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--sp-4);
+}
+:where(.cal-app) .modal[hidden] { display: none; }
+
+:where(.cal-app) .modal__backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(4px);
+  animation: fadeIn 200ms var(--ease);
+}
+:where(.cal-app) .modal__overlay {
+  position: absolute;
+  inset: 0;
+}
+
+:where(.cal-app) .modal__panel {
+  position: relative;
+  width: min(520px, 100%);
+  max-height: 90vh;
+  max-height: 90dvh; /* track the visual viewport on phones (URL bar state) */
+  overflow-y: auto;
+  overflow-x: hidden;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  animation: panelIn 280ms var(--ease);
+}
+
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes panelIn {
+  from { opacity: 0; transform: translateY(8px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+:where(.cal-app) .modal__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--sp-5) var(--sp-5) var(--sp-3);
+  border-bottom: 1px solid var(--border);
+}
+
+:where(.cal-app) .modal__title {
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-style: italic;
+  font-size: 24px;
+  letter-spacing: -0.01em;
+}
+
+:where(.cal-app) .modal__close {
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  color: var(--muted);
+  font-size: 14px;
+  display: inline-flex; align-items: center; justify-content: center;
+  transition: all 160ms var(--ease);
+}
+:where(.cal-app) .modal__close:hover { color: var(--text); background: var(--surface-2); }
+
+:where(.cal-app) .modal__form {
+  padding: var(--sp-4) var(--sp-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+/* Form fields. Renamed from `.field` so the hub's own .field styles (used by
+   /shopping and the demo pages) never reach the calendar's dialog. */
+:where(.cal-app) .cal-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+:where(.cal-app) .cal-field--inline {
+  flex-direction: row;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: 13px;
+  color: var(--text-soft);
+  cursor: pointer;
+  user-select: none;
+}
+:where(.cal-app) .cal-field__label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--muted);
+  font-weight: 500;
+}
+
+:where(.cal-app) .cal-field input[type="text"],
+:where(.cal-app) .cal-field input[type="date"],
+:where(.cal-app) .cal-field input[type="time"],
+:where(.cal-app) .cal-field input[type="number"],
+:where(.cal-app) .cal-field select,
+:where(.cal-app) .cal-field textarea {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  font-size: 13px;
+  color: var(--text);
+  transition: border-color 160ms var(--ease), box-shadow 160ms var(--ease);
+  width: 100%;
+}
+:where(.cal-app) .cal-field input:focus,
+:where(.cal-app) .cal-field select:focus,
+:where(.cal-app) .cal-field textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+:where(.cal-app) .cal-field textarea { resize: vertical; min-height: 60px; font-family: inherit; }
+
+:where(.cal-app) .cal-field-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--sp-3);
+}
+
+:where(.cal-app) .cal-field-row[hidden] { display: none; }
+
+/* Color swatches */
+:where(.cal-app) .swatches {
+  display: flex;
+  gap: var(--sp-1);
+  align-items: center;
+  height: 36px;
+}
+:where(.cal-app) .swatch {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: transform 140ms var(--ease), border-color 140ms var(--ease);
+  position: relative;
+}
+:where(.cal-app) .swatch::after {
+  content: "";
+  position: absolute;
+  inset: 2px;
+  border-radius: 50%;
+  background: var(--swatch-color, #888);
+}
+:where(.cal-app) .swatch:hover { transform: scale(1.12); }
+:where(.cal-app) .swatch[data-selected="true"] { border-color: var(--text); }
+
+:where(.cal-app) .modal__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: var(--sp-3);
+  margin-top: var(--sp-2);
+  border-top: 1px solid var(--border);
+  gap: var(--sp-2);
+}
+:where(.cal-app) .modal__foot-right { display: flex; gap: var(--sp-2); }
+
+:where(.cal-app) .btn {
+  padding: 8px 16px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 500;
+  transition: all 160ms var(--ease);
+  border: 1px solid transparent;
+}
+:where(.cal-app) .btn--primary {
+  background: var(--text);
+  color: var(--surface);
+}
+:where(.cal-app) .btn--primary:hover { background: var(--accent); }
+:where(.cal-app) .btn--ghost {
+  color: var(--text-soft);
+  border-color: var(--border);
+}
+:where(.cal-app) .btn--ghost:hover { background: var(--surface-2); color: var(--text); }
+:where(.cal-app) .btn--danger {
+  background: var(--accent);
+  color: var(--surface);
+}
+:where(.cal-app) .btn--danger:hover { filter: brightness(1.1); }
+:where(.cal-app) #delete-btn { color: var(--accent); }
+:where(.cal-app) #delete-btn:hover { background: var(--accent-soft); border-color: var(--accent); }
+
+/* ===== Delete confirmation panel ===== */
+:where(.cal-app) .modal__confirm {
+  padding: var(--sp-6) var(--sp-5);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: var(--sp-3);
+  animation: fadeIn 200ms var(--ease);
+}
+:where(.cal-app) .modal__confirm[hidden] { display: none; }
+
+:where(.cal-app) .modal__confirm-title {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 400;
+  font-size: 22px;
+  color: var(--text);
+  letter-spacing: -0.01em;
+}
+
+:where(.cal-app) .modal__confirm-msg {
+  font-size: 13px;
+  color: var(--text-soft);
+  max-width: 360px;
+  line-height: 1.55;
+}
+
+:where(.cal-app) .modal__confirm-buttons {
+  display: flex;
+  gap: var(--sp-2);
+  margin-top: var(--sp-3);
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+/* ===== Day detail modal ===== */
+
+:where(.cal-app) .modal__panel--day {
+  width: min(440px, 100%);
+}
+
+:where(.cal-app) .day-modal__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: var(--sp-5) var(--sp-5) var(--sp-3);
+  border-bottom: 1px solid var(--border);
+}
+
+:where(.cal-app) .day-modal__date {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+:where(.cal-app) .day-modal__dow {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: var(--muted);
+  font-weight: 500;
+}
+
+:where(.cal-app) .day-modal__num {
+  font-family: var(--font-display);
+  font-weight: 300;
+  font-size: 48px;
+  line-height: 1;
+  color: var(--text);
+  font-style: italic;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  font-variation-settings: "SOFT" 60;
+}
+
+:where(.cal-app) .day-modal__mon {
+  font-size: 12px;
+  color: var(--text-soft);
+  margin-top: 2px;
+  font-feature-settings: "tnum";
+}
+
+:where(.cal-app) .day-modal__body {
+  padding: var(--sp-3) var(--sp-5) var(--sp-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+:where(.cal-app) .day-modal__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  max-height: 50vh;
+  max-height: 50dvh;
+  overflow-y: auto;
+  overflow-x: hidden;
+  min-width: 0;
+}
+
+:where(.cal-app) .day-modal__empty {
+  font-size: 13px;
+  color: var(--muted);
+  font-style: italic;
+  padding: var(--sp-4) 0;
+  text-align: center;
+}
+
+:where(.cal-app) .day-modal__item {
+  display: grid;
+  grid-template-columns: 110px 1fr;
+  gap: var(--sp-3);
+  align-items: baseline;
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  border-left: 2px solid var(--up-color, var(--accent));
+  background: var(--bg-grain);
+  transition: background 160ms var(--ease), transform 160ms var(--ease);
+  min-width: 0;
+}
+:where(.cal-app) .day-modal__item:hover {
+  background: var(--surface-2);
+  transform: translateX(1px);
+}
+
+@media (max-width: 480px) {
+  :where(.cal-app) .day-modal__item {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+  :where(.cal-app) .day-modal__loc { grid-column: 1; }
+}
+
+:where(.cal-app) .day-modal__time {
+  font-size: 11px;
+  color: var(--muted);
+  font-feature-settings: "tnum";
+  white-space: nowrap;
+}
+
+:where(.cal-app) .day-modal__title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+  word-break: break-word;
+}
+
+:where(.cal-app) .day-modal__loc {
+  grid-column: 2;
+  font-size: 11px;
+  color: var(--text-soft);
+  margin-top: 2px;
+  font-style: italic;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+:where(.cal-app) .day-modal__add {
+  align-self: flex-start;
+  font-size: 12px;
+}
+
+/* ===== Event details modal (read-only) ===== */
+
+:where(.cal-app) .modal__panel--details { border-top: 3px solid var(--details-color, var(--accent)); }
+
+:where(.cal-app) .details__body {
+  padding: var(--sp-4) var(--sp-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+:where(.cal-app) .details__row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+:where(.cal-app) .details__label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--muted);
+  font-weight: 500;
+}
+:where(.cal-app) .details__value {
+  font-size: 14px;
+  color: var(--text);
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+:where(.cal-app) .details__notes { white-space: pre-wrap; }
+:where(.cal-app) .details__foot {
+  margin: 0;
+  padding: var(--sp-3) var(--sp-5) var(--sp-4);
+  justify-content: flex-end;
+}
+
+/* Import choice: let the three buttons wrap on narrow screens */
+:where(.cal-app) .import__foot { flex-wrap: wrap; }
+
+/* ---------- Request failure notice ----------
+ * The original app only logged a failed request to the console. The hub has a
+ * real server with validation, so failures are shown in the app's own visual
+ * language instead of being dropped silently. */
+
+:where(.cal-app) .cal-notice {
+  position: fixed;
+  left: 50%;
+  bottom: 18px;
+  z-index: 300;
+  max-width: min(420px, calc(100vw - 32px));
+  padding: 10px 16px;
+  transform: translate(-50%, 12px);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  box-shadow: var(--shadow-lg);
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.45;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 200ms var(--ease), transform 200ms var(--ease);
+}
+:where(.cal-app) .cal-notice[data-open="true"] {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+/* ---------- Hub shell integration ----------
+ * The hub supplies the masthead, footer and PWA shell. The calendar keeps its
+ * own fixed, non-scrolling surface and its own padding, so the hub's home-page
+ * max-width and gutters are lifted for this page only. */
+
+.calendar-body { overflow: hidden; }
+
+.calendar-body .page-shell {
+  width: 100%;
+  max-width: none;
+  height: 100dvh;
+  min-height: 0;
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.calendar-body .page-main {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  padding-top: 0;
+}
+
+.calendar-body .site-footer {
+  padding-top: 6px;
+}
+
+.calendar-body .cal-app {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+}
+
+@media (max-width: 700px) {
+  .calendar-body .site-footer { display: none; }
+}

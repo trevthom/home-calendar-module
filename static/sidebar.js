@@ -1,0 +1,207 @@
+// js/sidebar.js — calendar list (collapsible), theme toggle, import/export.
+//
+// The logout control is gone: the hub has no accounts or sessions. The theme
+// toggle now sets data-theme on the calendar surface rather than on <html>,
+// so the hub's own chrome keeps its own colour scheme.
+
+import { $, clear, el } from "./utils.js";
+import {
+  getState, subscribe,
+  addCalendar, deleteCalendar, toggleCalendarVisibility,
+  setCalendarsCollapsed, replaceData, mergeData,
+} from "./state.js";
+import { loadTheme, saveTheme } from "./storage.js";
+import { downloadICS, importICS } from "./ics.js";
+
+/* ---------- Theme ---------- */
+
+function appRoot() {
+  return $(".cal-app");
+}
+
+function applyTheme(theme) {
+  const root = appRoot();
+  if (root) root.setAttribute("data-theme", theme);
+  saveTheme(theme);
+}
+
+function initTheme() {
+  applyTheme(loadTheme());
+  $("#theme-toggle").addEventListener("click", () => {
+    const cur = appRoot().getAttribute("data-theme");
+    applyTheme(cur === "dark" ? "light" : "dark");
+  });
+}
+
+/* ---------- Calendar list ---------- */
+
+function renderCalendarList() {
+  const list = $("#cal-list-items");
+  clear(list);
+
+  const { calendars, ui } = getState();
+  $("#cal-list").dataset.collapsed = ui.sidebarCalendarsCollapsed ? "true" : "false";
+  $("#cal-list-toggle").setAttribute(
+    "aria-expanded",
+    ui.sidebarCalendarsCollapsed ? "false" : "true"
+  );
+
+  for (const cal of calendars) {
+    const item = el("li", {
+      class: "cal-item",
+      dataset: { checked: cal.visible ? "true" : "false" },
+      style: { "--cal-color": cal.color },
+    });
+    const check = el("span", { class: "cal-item__check", "aria-hidden": "true" });
+    const name = el("span", { class: "cal-item__name" }, cal.name);
+    const del = el("button", {
+      class: "cal-item__delete",
+      title: "Delete calendar",
+      "aria-label": `Delete ${cal.name}`,
+    }, "×");
+
+    item.addEventListener("click", (e) => {
+      if (e.target === del) return;
+      toggleCalendarVisibility(cal.id);
+    });
+    del.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (confirm(`Delete the "${cal.name}" calendar and all its events?`)) {
+        deleteCalendar(cal.id);
+      }
+    });
+
+    item.append(check, name, del);
+    list.append(item);
+  }
+}
+
+function initCalendarList() {
+  // Toggle expand/collapse — clicking the title area toggles
+  $("#cal-list-toggle").addEventListener("click", () => {
+    const { ui } = getState();
+    setCalendarsCollapsed(!ui.sidebarCalendarsCollapsed);
+  });
+
+  $("#cal-add-btn").addEventListener("click", () => {
+    const name = prompt("Name for the new calendar:");
+    if (!name) return;
+    const palette = ["#c84a31","#c98817","#7e8c3c","#2f7a78","#3e4d8c","#7a3d6b","#4a4a4a"];
+    const color = palette[getState().calendars.length % palette.length];
+    addCalendar(name.trim(), color);
+  });
+
+  renderCalendarList();
+  subscribe(renderCalendarList);
+}
+
+/* ---------- Import / Export ---------- */
+
+function initImportExport() {
+  $("#export-btn").addEventListener("click", () => {
+    downloadICS(getState());
+  });
+
+  $("#import-btn").addEventListener("click", () => {
+    $("#import-file").click();
+  });
+
+  $("#import-file").addEventListener("change", async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    try {
+      const data = importICS(await file.text());
+      const mode = await askImportMode(data.events.length);
+      if (mode === "replace") {
+        replaceData(data);
+      } else if (mode === "append") {
+        const { added, skipped } = mergeData(data);
+        if (skipped) alert(`Added ${added} events. Skipped ${skipped} already in your calendar.`);
+      }
+    } catch (err) {
+      alert("Could not import .ics file: " + err.message);
+    } finally {
+      e.target.value = "";
+    }
+  });
+}
+
+/** Show the import dialog. Resolves "replace", "append" or null (cancel). */
+function askImportMode(count) {
+  const modal = $("#import-modal");
+  $("#import-summary").textContent =
+    `This file has ${count} event${count === 1 ? "" : "s"}.`;
+  modal.hidden = false;
+  $("#import-append").focus();
+  return new Promise((resolve) => {
+    const done = (mode) => {
+      modal.hidden = true;
+      modal.removeEventListener("click", onClick);
+      document.removeEventListener("keydown", onKey);
+      resolve(mode);
+    };
+    const onClick = (e) => {
+      if (e.target.id === "import-replace") done("replace");
+      else if (e.target.id === "import-append") done("append");
+      else if (e.target.dataset.closeImport !== undefined) done(null);
+    };
+    const onKey = (e) => { if (e.key === "Escape") done(null); };
+    modal.addEventListener("click", onClick);
+    document.addEventListener("keydown", onKey);
+  });
+}
+
+/* ---------- Drawer (hamburger → slide-out sidebar) ---------- */
+
+function initDrawer() {
+  const sidebar = $("#sidebar");
+  const backdrop = $("#sidebar-backdrop");
+  const toggle = $("#sidebar-toggle");
+
+  function setOpen(open) {
+    sidebar.dataset.open = open ? "true" : "false";
+    backdrop.dataset.open = open ? "true" : "false";
+    toggle.setAttribute("aria-expanded", open ? "true" : "false");
+    toggle.setAttribute("aria-label", open ? "Close menu" : "Open menu");
+    // `hidden` keeps the backdrop out of the tab order entirely when closed.
+    // We toggle it AFTER the close transition so the fade-out is visible.
+    if (open) {
+      backdrop.removeAttribute("hidden");
+    } else {
+      // Wait for the opacity transition before hiding from the a11y tree
+      setTimeout(() => {
+        if (sidebar.dataset.open !== "true") backdrop.setAttribute("hidden", "");
+      }, 300);
+    }
+  }
+
+  toggle.addEventListener("click", () => {
+    const isOpen = sidebar.dataset.open === "true";
+    setOpen(!isOpen);
+  });
+  backdrop.addEventListener("click", () => setOpen(false));
+
+  document.addEventListener("keydown", (e) => {
+    // Only react to ESC if drawer is open AND no modal is on top of it.
+    if (e.key !== "Escape") return;
+    if (sidebar.dataset.open !== "true") return;
+    const eventModalOpen = !$("#modal").hasAttribute("hidden");
+    const dayModalOpen = !$("#day-modal").hasAttribute("hidden");
+    const detailsModalOpen = !$("#details-modal").hasAttribute("hidden")
+      || !$("#import-modal").hasAttribute("hidden");
+    if (eventModalOpen || dayModalOpen || detailsModalOpen) return;
+    setOpen(false);
+  });
+
+  // Start closed regardless of any stale DOM state from hot reloads.
+  setOpen(false);
+}
+
+/* ---------- Init ---------- */
+
+export function initSidebar() {
+  initDrawer();
+  initTheme();
+  initCalendarList();
+  initImportExport();
+}
