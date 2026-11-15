@@ -5,9 +5,9 @@
 {% block body_class %}app-body calendar-body{% endblock %}
 
 {% block head %}
-  <link rel="stylesheet" href="{{ url_for('calendar.static', filename='fonts.css') }}">
-  <link rel="stylesheet" href="{{ url_for('calendar.static', filename='calendar.css') }}">
-  <link rel="stylesheet" href="{{ url_for('calendar.static', filename='shell.css') }}">
+  <link rel="stylesheet" href="{{ url_for('calendar.static', filename='fonts.css', v='2') }}">
+  <link rel="stylesheet" href="{{ url_for('calendar.static', filename='calendar.css', v='2') }}">
+  <link rel="stylesheet" href="{{ url_for('calendar.static', filename='shell.css', v='2') }}">
 {% endblock %}
 
 {% block content %}
@@ -276,5 +276,5 @@
 {% endblock %}
 
 {% block scripts %}
-  <script type="module" src="{{ url_for('calendar.static', filename='calendar.js') }}"></script>
+  <script type="module" src="{{ url_for('calendar.static', filename='calendar.js', v='2') }}"></script>
 {% endblock %}
