@@ -1,0 +1,22 @@
+/* Hub integration: fill the viewport and make room for the shared back link. */
+
+.cal-app {
+  width: 100%;
+  height: 100dvh;
+  min-height: 100dvh;
+}
+
+/* First header column: back-to-hub control, then the sidebar hamburger. */
+:where(.cal-app) .cal-header__start {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  justify-self: start;
+  min-width: 0;
+}
+
+@media (max-width: 700px) {
+  :where(.cal-app) .cal-header__start {
+    gap: 6px;
+  }
+}
