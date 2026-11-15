@@ -1,11 +1,13 @@
 {% extends "base.html" %}
+{% from "_chrome.html" import hub_back %}
 
 {% block title %}{{ current_application.name }} · Thompson{% endblock %}
-{% block body_class %}calendar-body{% endblock %}
+{% block body_class %}app-body calendar-body{% endblock %}
 
 {% block head %}
   <link rel="stylesheet" href="{{ url_for('calendar.static', filename='fonts.css') }}">
   <link rel="stylesheet" href="{{ url_for('calendar.static', filename='calendar.css') }}">
+  <link rel="stylesheet" href="{{ url_for('calendar.static', filename='shell.css') }}">
 {% endblock %}
 
 {% block content %}
@@ -67,11 +69,14 @@
   <!-- MAIN CALENDAR AREA -->
   <main class="main">
     <header class="cal-header">
-      <button class="hamburger" id="sidebar-toggle" aria-label="Open menu" aria-controls="sidebar" aria-expanded="false">
-        <span class="hamburger__bar"></span>
-        <span class="hamburger__bar"></span>
-        <span class="hamburger__bar"></span>
-      </button>
+      <div class="cal-header__start">
+        {{ hub_back() }}
+        <button class="hamburger" id="sidebar-toggle" aria-label="Open menu" aria-controls="sidebar" aria-expanded="false">
+          <span class="hamburger__bar"></span>
+          <span class="hamburger__bar"></span>
+          <span class="hamburger__bar"></span>
+        </button>
+      </div>
       <div class="cal-header__nav">
         <button class="nav-btn nav-btn--year" id="prev-year" aria-label="Previous year">⟪</button>
         <button class="nav-btn nav-btn--month" id="prev-month" aria-label="Previous month">‹</button>
